@@ -1,6 +1,7 @@
 package typescriptify
 
 import (
+	"crypto/md5"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -242,19 +243,19 @@ func (t *TypeScriptify) AddType(typeOf reflect.Type) *TypeScriptify {
 func (t *typeScriptClassBuilder) AddMapField(fieldName string, field reflect.StructField) {
 	keyType := field.Type.Key()
 	valueType := field.Type.Elem()
-	valueTypeName := valueType.Name()
+	valueTypeName := safeTypeName(valueType)
 	if name, ok := t.types[valueType.Kind()]; ok {
 		valueTypeName = name
 	}
 	if valueType.Kind() == reflect.Array || valueType.Kind() == reflect.Slice {
-		valueTypeName = valueType.Elem().Name() + "[]"
+		valueTypeName = safeTypeName(valueType.Elem()) + "[]"
 	}
 	if valueType.Kind() == reflect.Ptr {
-		valueTypeName = valueType.Elem().Name()
+		valueTypeName = safeTypeName(valueType.Elem())
 	}
 	strippedFieldName := strings.ReplaceAll(fieldName, "?", "")
 
-	keyTypeStr := keyType.Name()
+	keyTypeStr := safeTypeName(keyType)
 	// Key should always be string, no need for this:
 	// _, isSimple := t.types[keyType.Kind()]
 	// if !isSimple {
@@ -458,7 +459,7 @@ func (t *TypeScriptify) convertEnum(depth int, typeOf reflect.Type, elements []e
 	}
 	t.alreadyConverted[typeOf] = true
 
-	entityName := t.Prefix + typeOf.Name() + t.Suffix
+	entityName := t.Prefix + safeTypeName(typeOf) + t.Suffix
 	result := "enum " + entityName + " {\n"
 
 	for _, val := range elements {
@@ -548,7 +549,7 @@ func (t *TypeScriptify) convertType(depth int, typeOf reflect.Type, customCode m
 
 	t.alreadyConverted[typeOf] = true
 
-	entityName := t.Prefix + typeOf.Name() + t.Suffix
+	entityName := t.Prefix + safeTypeName(typeOf) + t.Suffix
 	result := ""
 	if t.CreateInterface {
 		result += fmt.Sprintf("interface %s {\n", entityName)
@@ -579,16 +580,16 @@ func (t *TypeScriptify) convertType(depth int, typeOf reflect.Type, customCode m
 		var err error
 		fldOpts := t.getFieldOptions(typeOf, field)
 		if fldOpts.TSTransform != "" {
-			t.logf(depth, "- simple field %s.%s", typeOf.Name(), field.Name)
+			t.logf(depth, "- simple field %s.%s", safeTypeName(typeOf), field.Name)
 			err = builder.AddSimpleField(jsonFieldName, field, fldOpts)
 		} else if _, isEnum := t.enums[field.Type]; isEnum {
-			t.logf(depth, "- enum field %s.%s", typeOf.Name(), field.Name)
+			t.logf(depth, "- enum field %s.%s", safeTypeName(typeOf), field.Name)
 			builder.AddEnumField(jsonFieldName, field)
 		} else if fldOpts.TSType != "" { // Struct:
-			t.logf(depth, "- simple field %s.%s", typeOf.Name(), field.Name)
+			t.logf(depth, "- simple field %s.%s", safeTypeName(typeOf), field.Name)
 			err = builder.AddSimpleField(jsonFieldName, field, fldOpts)
 		} else if field.Type.Kind() == reflect.Struct { // Struct:
-			t.logf(depth, "- struct %s.%s (%s)", typeOf.Name(), field.Name, field.Type.String())
+			t.logf(depth, "- struct %s.%s (%s)", safeTypeName(typeOf), field.Name, field.Type.String())
 			typeScriptChunk, err := t.convertType(depth+1, field.Type, customCode)
 			if err != nil {
 				return "", err
@@ -598,7 +599,7 @@ func (t *TypeScriptify) convertType(depth int, typeOf reflect.Type, customCode m
 			}
 			builder.AddStructField(jsonFieldName, field)
 		} else if field.Type.Kind() == reflect.Map {
-			t.logf(depth, "- map field %s.%s", typeOf.Name(), field.Name)
+			t.logf(depth, "- map field %s.%s", safeTypeName(typeOf), field.Name)
 			// Also convert map key types if needed
 			var keyTypeToConvert reflect.Type
 			switch field.Type.Key().Kind() {
@@ -647,7 +648,7 @@ func (t *TypeScriptify) convertType(depth int, typeOf reflect.Type, customCode m
 			}
 
 			if field.Type.Elem().Kind() == reflect.Struct { // Slice of structs:
-				t.logf(depth, "- struct slice %s.%s (%s)", typeOf.Name(), field.Name, field.Type.String())
+				t.logf(depth, "- struct slice %s.%s (%s)", safeTypeName(typeOf), field.Name, field.Type.String())
 				typeScriptChunk, err := t.convertType(depth+1, field.Type.Elem(), customCode)
 				if err != nil {
 					return "", err
@@ -657,11 +658,11 @@ func (t *TypeScriptify) convertType(depth int, typeOf reflect.Type, customCode m
 				}
 				builder.AddArrayOfStructsField(jsonFieldName, field, arrayDepth)
 			} else { // Slice of simple fields:
-				t.logf(depth, "- slice field %s.%s", typeOf.Name(), field.Name)
+				t.logf(depth, "- slice field %s.%s", safeTypeName(typeOf), field.Name)
 				err = builder.AddSimpleArrayField(jsonFieldName, field, arrayDepth, fldOpts)
 			}
 		} else { // Simple field:
-			t.logf(depth, "- simple field %s.%s", typeOf.Name(), field.Name)
+			t.logf(depth, "- simple field %s.%s", safeTypeName(typeOf), field.Name)
 			err = builder.AddSimpleField(jsonFieldName, field, fldOpts)
 		}
 		if err != nil {
@@ -725,7 +726,7 @@ type typeScriptClassBuilder struct {
 }
 
 func (t *typeScriptClassBuilder) AddSimpleArrayField(fieldName string, field reflect.StructField, arrayDepth int, opts TypeOptions) error {
-	fieldType, kind := field.Type.Elem().Name(), field.Type.Elem().Kind()
+	fieldType, kind := safeTypeName(field.Type.Elem()), field.Type.Elem().Kind()
 	typeScriptType := t.types[kind]
 
 	if len(fieldName) > 0 {
@@ -745,7 +746,7 @@ func (t *typeScriptClassBuilder) AddSimpleArrayField(fieldName string, field ref
 }
 
 func (t *typeScriptClassBuilder) AddSimpleField(fieldName string, field reflect.StructField, opts TypeOptions) error {
-	fieldType, kind := field.Type.Name(), field.Type.Kind()
+	fieldType, kind := safeTypeName(field.Type), field.Type.Kind()
 
 	typeScriptType := t.types[kind]
 	if len(opts.TSType) > 0 {
@@ -769,21 +770,21 @@ func (t *typeScriptClassBuilder) AddSimpleField(fieldName string, field reflect.
 }
 
 func (t *typeScriptClassBuilder) AddEnumField(fieldName string, field reflect.StructField) {
-	fieldType := field.Type.Name()
+	fieldType := safeTypeName(field.Type)
 	t.addField(fieldName, t.prefix+fieldType+t.suffix)
 	strippedFieldName := strings.ReplaceAll(fieldName, "?", "")
 	t.addInitializerFieldLine(strippedFieldName, fmt.Sprintf("source[\"%s\"]", strippedFieldName))
 }
 
 func (t *typeScriptClassBuilder) AddStructField(fieldName string, field reflect.StructField) {
-	fieldType := field.Type.Name()
+	fieldType := safeTypeName(field.Type)
 	strippedFieldName := strings.ReplaceAll(fieldName, "?", "")
 	t.addField(fieldName, t.prefix+fieldType+t.suffix)
 	t.addInitializerFieldLine(strippedFieldName, fmt.Sprintf("this.convertValues(source[\"%s\"], %s)", strippedFieldName, t.prefix+fieldType+t.suffix))
 }
 
 func (t *typeScriptClassBuilder) AddArrayOfStructsField(fieldName string, field reflect.StructField, arrayDepth int) {
-	fieldType := field.Type.Elem().Name()
+	fieldType := safeTypeName(field.Type.Elem())
 	strippedFieldName := strings.ReplaceAll(fieldName, "?", "")
 	t.addField(fieldName, fmt.Sprint(t.prefix+fieldType+t.suffix, strings.Repeat("[]", arrayDepth)))
 	t.addInitializerFieldLine(strippedFieldName, fmt.Sprintf("this.convertValues(source[\"%s\"], %s)", strippedFieldName, t.prefix+fieldType+t.suffix))
@@ -796,4 +797,15 @@ func (t *typeScriptClassBuilder) addInitializerFieldLine(fld, initializer string
 
 func (t *typeScriptClassBuilder) addField(fld, fldType string) {
 	t.fields = append(t.fields, fmt.Sprint(t.indent, fld, ": ", fldType, ";"))
+}
+
+
+// anonymous type have no type.Name(), so we give a default
+func safeTypeName(t reflect.Type) string {
+	if len(t.Name()) > 0 {
+		return t.Name()
+	}
+	m := md5.Sum([]byte(t.PkgPath() + t.String()))
+	md5str := fmt.Sprintf("%x", m[:4])
+	return fmt.Sprintf("anonymous%v", md5str)
 }
