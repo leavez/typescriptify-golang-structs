@@ -361,7 +361,7 @@ func TestTypescriptifyCustomType(t *testing.T) {
 	converter.CreateConstructor = false
 
 	desiredResult := `export class TestCustomType {
-        map: {[key: string]: number};
+        map: {[key in string]: number};
 }`
 	testConverter(t, converter, false, desiredResult, nil)
 }
@@ -1020,7 +1020,7 @@ func TestMapWithPrefix(t *testing.T) {
 
 	desiredResult := `
 export class prefix_Example {
-    variable: {[key: string]: string};
+    variable: {[key in string]: string};
 
     static createFrom(source: any = {}) {
         return new prefix_Example(source);
