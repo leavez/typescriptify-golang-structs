@@ -534,6 +534,8 @@ func (t *TypeScriptify) getJSONFieldName(field reflect.StructField, isPtr bool) 
 		if !ignored && isPtr || hasOmitEmpty {
 			jsonFieldName = fmt.Sprintf("%s?", jsonFieldName)
 		}
+	} else {
+		jsonFieldName = field.Name
 	}
 	return jsonFieldName
 }
